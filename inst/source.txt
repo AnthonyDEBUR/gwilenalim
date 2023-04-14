@@ -1,0 +1,10 @@
+https://www.assainissement.developpement-durable.gouv.fr/PortailAC/index#!
+
+Exporter la liste des stations de traitement des eaux usées françaises des agglomérations d'assainissement
+
+AVERTISSEMENT : Certaines informations sont en cours d'acquisition, d'autres nécessitent d'être améliorées. Le Ministère en charge de l'écologie, les services déconcentrés de l'Etat et les établissements publics du domaine de l'eau oeuvrent chaque année au renforcement du dispositif pour assurer, à chaque mise à jour des données, une qualité croissante d'informations. Les données des stations de traitement des eaux usées des agglomérations de moins de 2000 EH sont également fournis mais avec un taux de fiabilité beaucoup plus faible que pour les 2000 Eh et plus notamment en ce qui concerne la conformité à la directive ERU (application de l’arrêté du 21 juillet 2015).
+
+Il vous est possible de contribuer à l'amélioration des données en nous contactant depuis le menu "envoyer un commentaire" Toute réutilisation des données de ce fichier est soumise aux mentions légales du domaine assainissement (rubrique mentions)
+Source base de Données sur les Eaux Résiduaires Urbaines (ERU)
+
+Sélection : Bassin Loire Breetagne

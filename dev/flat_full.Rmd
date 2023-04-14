@@ -23,60 +23,685 @@ If it is the first time you use {fusen}, after 'description', you can directly r
 pkgload::load_all(export_all = FALSE)
 ```
 
-# Include some data examples in your package
 
-<!-- 
- Store your dataset in a directory named "inst/" at the root of your project.
- Use it for your tests in this Rmd thanks to `pkgload::load_all()` to make it available
-and `system.file()` to read it in your examples.
+# importe_data_step
 
-- There already is a dataset in the "inst/" directory to be used in the examples below
--->
+Cette fonction permet d'importer sous GeoGwilen les données téléchargées manuellement depuis https://www.assainissement.developpement-durable.gouv.fr/PortailAC/ 
 
-```{r development-dataset}
-# Run all this chunk in the console directly
-# There already is a dataset in the "inst/" directory
-# Make the dataset file available to the current Rmd during development
-pkgload::load_all(path = here::here(), export_all = FALSE)
+A ce jour nous n'avons pas connaissance de flux ou d'url fixe permettant de télécharger les données brutes.
+Pour récupérer ces données il faut les télécharger année par année au format csv depuis la page téléchargement du site.
+Il faut ensuite stocker l'ensemble des csv \u00e0 assembler dans un m\u00eame r\u00e9pertoire et indiquer \u00e0 la fonction le chemin d'accès à ce répertoire.
 
-# You will be able to read your example data file in each of your function examples and tests as follows - see chunks below
-datafile <- system.file("nyc_squirrels_sample.csv", package = "gwilenalim")
-nyc_squirrels <- read.csv(datafile, encoding = "UTF-8")
+Les données dans leur ensemble sont alors envoyées sous la base GeoGwilen dans le schéma m621_step sous forme d'une table unique bdd_step_fr.
 
-nyc_squirrels
-```
+Ces données sont mises en forme par la fonction pour ne retenir que les sites localisés sur le bassin de la Vilaine.
+Elles sont séparées et stockées dans 5 tables dans le schéma r621_step :
+* une avec les objets géographiques ponctuels position des STEP r621_step_vilaine_xy_ste
+* une avec les objets géographiques ponctuels position des points de rejets r621_rejets_vilaine_xy_res
+* une avec des objets géographiques linéaires : lignes droites entre les STEP et leurs points de rejets r621_liaison_steprejet_vilaine_xy_lis
+* une table attributaire sur les conformités réglementaire des stations (et toutes les données variant d'une ann\u00e9e sur l'autre) : r621_conformite_cos
+* une table attributaire sur les technologies et capacité nominales des stations : r621_ouvrages_ous
 
-
-# The first function of the package: Calculate the median of a vector
-
-<!--
-Create a chunk for the core of the function
-
-- The chunk needs to be named `function` at least
-- It contains the code of a documented function
-- The chunk can also be named `function-my_median` to make it easily
-findable in your Rmd
-- Let the `@examples` part empty, and use the next `examples` chunk instead to present reproducible examples
-
-After inflating the template
-
--  This function code will automatically be added in a new file in the "R/" directory
--->
 
 ```{r function}
-#' My median
+#' importe_data_step
 #'
-#' @param x Vector of Numeric values
-#' @inheritParams stats::median
+#' @param dossier : adresse du dossier où sont stockés les fichiers csv exportés depuis le site 
+#' https://www.assainissement.developpement-durable.gouv.fr/PortailAC/ 
 #'
 #' @return
-#' Median of vector x
+#' statut de l'enregistrement des données (OK si les lignes ont été importées et KO sinon)
 #' @export
 #'
 #' @examples
-my_median <- function(x, na.rm = TRUE) {
-  if (!is.numeric(x)) {stop("x should be numeric")}
-  stats::median(x, na.rm = na.rm)
+importe_data_step <- function(dossier) {
+  
+  longitude_du_steu_wgs84<-latitude_du_steu_wgs84<-longitude_du_rejet_wgs84<-latitude_du_rejet_wgs84<-NULL
+  data<-sage_vilaine<-annee<-code_du_steu<-nom_du_steu<-nature_du_steu<-etat_du_steu<-NULL
+  date_de_mise_en_service_du_steu<-date_de_mise_hors_serv_du_steu<-capacite_nominale_en_eh<-NULL
+  capacite_nominale_en_kg_de_dbo5<-debit_de_reference_en_m3_j<-filiere_eau_principale<-NULL
+  filiere_boues_principale<-date_derniere_modification_steu<-nom_du_milieu_de_rejet<-NULL
+  nom_du_bassin_versant<-niveau_traitement_existant_biologique<-niveau_traitement_existant_azote<-NULL
+  niveau_traitement_existant_phosphore<-niveau_traitement_existant_desinfection<-type_de_reseau_majoritaire<-NULL
+  code_de_masse_eau<-nom_de_la_masse_eau<-taille_agglomeration_eh<-tranche_obligation<-NULL
+  charge_maximale_entrante_eh<-debit_entrant_en_m3_j<-percentile95_calcule_en_m3_j<-NULL
+  conformite_globale_agglo<-cause_de_non_conformite<-conformite_equipement_agglo<-NULL
+  conformite_en_performance_agglo<-conformite_collecte_agglo_temps_sec<-conformite_collecte_agglo<-NULL
+  conformite_eru_perf_dbo<-conformite_eru_perf_dco<-conformite_eru_perf_ngl<-conformite_eru_perf_pt<-NULL
+  prod_boues_sans_reactif_tms_an<-annee<-.<-NULL
+  
+  if (!is.character(dossier)) {stop("dossier should be character")}
+
+# Établir la connexion à la base de données en utilisant les informations de connexion du fichier YAML
+con <- DBI::dbConnect(RPostgres::Postgres(),
+                      host = config$host,
+                      port = config$port,
+                      user = config$user,
+                      password = config$password,
+                      dbname = config$dbname)
+  
+  
+#####TRAITEMENT DES FICHIERS PREALABLEMENT TELECHARGES #####  
+  fichiers<-data.frame(nom=list.files(dossier, pattern = ".csv"),
+                     chemin=list.files(dossier, pattern = ".csv", full.names=TRUE))
+
+
+lire_fichier<-function(i)
+{
+  annee<-substr(fichiers$nom[i], 11,14)
+  ajout<-readr::read_delim(fichiers$chemin[i],
+                           show_col_types = FALSE)
+  names(ajout)[names(ajout)==paste0("Etat de agglom\u00e9ration en ", annee)]<-"Etat_de_agglom\u00e9ration"
+  names(ajout)[names(ajout)==paste0("Etat du STEU en ", annee)]<-"Etat_du_STEU"
+  names(ajout)[names(ajout)==paste0("Conformit\u00e9 ERU \u00e9quipement STEU au 31/12/", annee)]<-"Conformit\u00e9_ERU_\u00e9quipement_STEU_au_31/12"
+  names(ajout)[names(ajout)==paste0("Conformit\u00e9 ERU \u00e9quipement STEU pr\u00e9visionelle au 31/12/", annee)]<-"Conformit\u00e9_ERU_\u00e9quipement_STEU_pr\u00e9visionnelle_au_31/12"
+  ajout$annee<-annee
+  return(ajout)
+}
+
+df_final<-purrr::map(seq_along(fichiers$nom), lire_fichier)
+df_final<-dplyr::bind_rows(df_final)
+
+colnames(df_final) <- gsub(" ", "_", colnames(df_final))
+colnames(df_final) <- gsub("\"", "", colnames(df_final))
+colnames(df_final) <- gsub("\'", "_", colnames(df_final))
+colnames(df_final) <- gsub("\\/", "_", colnames(df_final))
+colnames(df_final) <- gsub("\\«", "", colnames(df_final))
+colnames(df_final) <- gsub("\\»", "", colnames(df_final))
+colnames(df_final) <- gsub("é", "e", colnames(df_final))
+colnames(df_final) <- gsub("è", "e", colnames(df_final))
+colnames(df_final) <- gsub("à", "a", colnames(df_final))
+colnames(df_final) <- gsub("\\(", "", colnames(df_final))
+colnames(df_final) <- gsub("\\)", "", colnames(df_final))
+colnames(df_final) <- gsub("\\î", "i", colnames(df_final))
+colnames(df_final) <- gsub("\\\t", "_", colnames(df_final))
+colnames(df_final) <- gsub("\\:", "", colnames(df_final))
+colnames(df_final) <- gsub("__", "_", colnames(df_final))
+colnames(df_final) <- gsub("-", "_", colnames(df_final))
+colnames(df_final) <- tolower(colnames(df_final))
+
+
+df_final<-df_final%>%subset(!is.na(longitude_du_steu_wgs84) & 
+                              !is.na(latitude_du_steu_wgs84))%>%
+  subset(!is.na(longitude_du_rejet_wgs84) & 
+                              !is.na(latitude_du_rejet_wgs84))
+
+	
+df_final$date_de_mise_hors_serv_du_steu[df_final$date_de_mise_hors_serv_du_steu=="1899-12-30"]<-NA
+
+df_sf <- sf::st_as_sf(df_final, 
+                      coords = c("longitude_du_steu_wgs84", 
+                                 "latitude_du_steu_wgs84"), 
+                      crs = 4326)
+df_sf<-sf::st_transform(df_sf, crs=2154)
+##### ENREGISTREMENT DU RESULTAT (DONNEES FR) DANS GEOGWILEN #####
+table_id <- DBI::Id(schema = "m621_step",
+                          table = "bdd_step_fr")
+
+try(DBI::dbRemoveTable(con, table_id))
+
+# Créer une table postgis avec un index spatial
+
+# Créer la requête SQL pour créer la table postgis
+sql_create_table <- paste0("CREATE TABLE m621_step.bdd_step_fr (",
+                           "id SERIAL PRIMARY KEY,",
+                           "geometry GEOMETRY,",
+                           paste(paste0(colnames(df_sf)[colnames(df_sf)!="geometry"], " TEXT"), collapse = ", "),
+                           ")")
+
+
+DBI::dbSendQuery(con, sql_create_table)
+
+# Insérer l'objet sf dans la table postgis
+sf::st_write(df_sf, 
+             con, 
+             table_id, 
+             driver = "PostgreSQL", 
+             append = TRUE)
+
+# Commenter la table postgis
+
+DBI::dbSendQuery(con, paste0("COMMENT ON TABLE m621_step.bdd_step_fr IS '{
+  \"Title\": \"Stations d''épuration du bassin Loire-Bretagne\",
+  \"Abstract\": \"Données extraites de https://www.assainissement.developpement-durable.gouv.fr/PortailAC/ pour le bassin Loire-Bretagne et importées sous geogwilen le ",format(Sys.Date(), "%d/%m/%Y"),"\",
+  \"Keywords\": [\"station d''épuration\",\"STEP\", \"assainissement\"],
+  \"Categories\": [\"Données géographiques\"],
+  \"SpatialExtent\": {
+    \"xmin\": ",sf::st_bbox(df_sf)$xmin,",
+    \"ymin\": ",sf::st_bbox(df_sf)$ymin,",
+    \"xmax\": ",sf::st_bbox(df_sf)$xmax,",
+    \"ymax\": ",sf::st_bbox(df_sf)$ymax,",
+    \"srs\": \"EPSG:2154\"
+  },
+  \"TemporalExtent\": {
+    \"Begin\": \"",min(df_final$annee),"\",
+    \"End\": \"",max(df_final$annee),"\"
+  },
+  \"Contacts\": [{
+    \"Name\": \"Anthony DE BURGHRAVE\",
+    \"Email\": \"anthony.deburghrave@eaux-et-vilaine.bzh\"
+  }],
+  \"Links\": [{
+    \"Type\": \"website\",
+    \"URL\": \"https://www.assainissement.developpement-durable.gouv.fr/PortailAC/\"
+  }]
+}'"))
+
+
+
+  
+##### Mise en forme des données sur BV Vilaine #####
+
+##### donnees XY STEP ####
+data(sage_vilaine, package="gwilenalim")
+sage_vilaine<-sf::st_transform(sage_vilaine, 2154)
+
+df_sf<-df_sf[sage_vilaine,]%>%
+  subset(annee==max(df_final$annee, na.rm=TRUE))%>%
+  dplyr::select("code_du_steu")%>%
+  unique()
+df_sf$assainissement<-paste0("https://www.assainissement.developpement-durable.gouv.fr/PortailAC/fiche-", 
+                   df_sf$code_du_steu)
+
+
+table_id <- DBI::Id(schema = "r621_step",
+                          table = "r621_step_vilaine_xy_ste")
+
+try(DBI::dbRemoveTable(con, table_id))
+
+# Créer une table postgis avec un index spatial
+
+# Créer la requête SQL pour créer la table postgis
+sql_create_table <- paste0("CREATE TABLE r621_step.r621_step_vilaine_xy_ste (",
+                           "id SERIAL PRIMARY KEY,",
+                           "geometry GEOMETRY,",
+                           paste(paste0(colnames(df_sf)[colnames(df_sf)!="geometry"], " TEXT"), collapse = ", "),
+                           ")")
+
+
+DBI::dbSendQuery(con, sql_create_table)
+
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_step_vilaine_xy_ste.code_du_steu IS 'Code SANDRE de la STEP';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_step_vilaine_xy_ste.assainissement IS 'Lien vers fiche de la STEP sous le portail assainissement.developpement-durable.gouv.fr';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+
+
+# Insérer l'objet sf dans la table postgis
+sf::st_write(df_sf, 
+             con, 
+             table_id, 
+             driver = "PostgreSQL", 
+             append = TRUE)
+
+# Commenter la table postgis
+
+DBI::dbSendQuery(con, paste0("COMMENT ON TABLE r621_step.r621_step_vilaine_xy_ste IS '{
+  \"Title\": \"Stations d''épuration du bassin de la Vilaine\",
+  \"Abstract\": \"Données extraites de https://www.assainissement.developpement-durable.gouv.fr/PortailAC/ pour le bassin Loire-Bretagne, sélection sur le bassin de la Vilaine uniquement. Données importées sous geogwilen le ",format(Sys.Date(), "%d/%m/%Y"),"\",
+  \"Keywords\": [\"station d''épuration\",\"STEP\", \"assainissement\"],
+  \"Categories\": [\"Données géographiques\"],
+  \"SpatialExtent\": {
+    \"xmin\": ",sf::st_bbox(df_sf)$xmin,",
+    \"ymin\": ",sf::st_bbox(df_sf)$ymin,",
+    \"xmax\": ",sf::st_bbox(df_sf)$xmax,",
+    \"ymax\": ",sf::st_bbox(df_sf)$ymax,",
+    \"srs\": \"EPSG:2154\"
+  },
+  \"TemporalExtent\": {
+    \"Begin\": \"",min(df_final$annee),"\",
+    \"End\": \"",max(df_final$annee),"\"
+  },
+  \"Contacts\": [{
+    \"Name\": \"Anthony DE BURGHRAVE\",
+    \"Email\": \"anthony.deburghrave@eaux-et-vilaine.bzh\"
+  }],
+  \"Links\": [{
+    \"Type\": \"website\",
+    \"URL\": \"https://www.assainissement.developpement-durable.gouv.fr/PortailAC/\"
+  }]
+}'"))
+
+
+
+
+##### donnees XY pt de rejet #####
+df_sf_rej <- sf::st_as_sf(df_final%>%
+    subset(annee==max(df_final$annee, na.rm=TRUE)), 
+                      coords = c("longitude_du_rejet_wgs84", 
+                                 "latitude_du_rejet_wgs84"), 
+                      crs = 4326)
+
+df_sf_rej<-sf::st_transform(df_sf_rej, crs=2154)
+df_sf_rej<-df_sf_rej[sage_vilaine,]%>%
+  dplyr::select("code_du_steu")%>%unique()
+
+table_id <- DBI::Id(schema = "r621_step",
+                          table = "r621_rejets_vilaine_xy_res")
+
+
+try(DBI::dbRemoveTable(con, table_id))
+
+# Créer une table postgis avec un index spatial
+
+# Créer la requête SQL pour créer la table postgis
+sql_create_table <- paste0("CREATE TABLE r621_step.r621_rejets_vilaine_xy_res (",
+                           "id SERIAL PRIMARY KEY,",
+                           "geometry GEOMETRY,",
+                           paste(paste0(colnames(df_sf_rej)[colnames(df_sf_rej)!="geometry"], " TEXT"), collapse = ", "),
+                           ")")
+
+
+DBI::dbSendQuery(con, sql_create_table)
+
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_rejets_vilaine_xy_res.code_du_steu IS 'Code SANDRE de la STEP';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+
+
+# Insérer l'objet sf dans la table postgis
+sf::st_write(df_sf_rej, 
+             con, 
+             table_id, 
+             driver = "PostgreSQL", 
+             append = TRUE)
+
+# Commenter la table postgis
+
+DBI::dbSendQuery(con, paste0("COMMENT ON TABLE r621_step.r621_rejets_vilaine_xy_res IS '{
+  \"Title\": \"Points de rejets au milieu naturel des stations d''épuration du bassin de la Vilaine\",
+  \"Abstract\": \"Données extraites de https://www.assainissement.developpement-durable.gouv.fr/PortailAC/ pour le bassin Loire-Bretagne, sélection sur le bassin de la Vilaine uniquement. Données importées sous geogwilen le ",format(Sys.Date(), "%d/%m/%Y"),"\",
+  \"Keywords\": [\"station d''épuration\",\"STEP\", \"assainissement\", \"points de rejets\"],
+  \"Categories\": [\"Données géographiques\"],
+  \"SpatialExtent\": {
+    \"xmin\": ",sf::st_bbox(df_sf_rej)$xmin,",
+    \"ymin\": ",sf::st_bbox(df_sf_rej)$ymin,",
+    \"xmax\": ",sf::st_bbox(df_sf_rej)$xmax,",
+    \"ymax\": ",sf::st_bbox(df_sf_rej)$ymax,",
+    \"srs\": \"EPSG:2154\"
+  },
+  \"TemporalExtent\": {
+    \"Begin\": \"",min(df_final$annee),"\",
+    \"End\": \"",max(df_final$annee),"\"
+  },
+  \"Contacts\": [{
+    \"Name\": \"Anthony DE BURGHRAVE\",
+    \"Email\": \"anthony.deburghrave@eaux-et-vilaine.bzh\"
+  }],
+  \"Links\": [{
+    \"Type\": \"website\",
+    \"URL\": \"https://www.assainissement.developpement-durable.gouv.fr/PortailAC/\"
+  }]
+}'"))
+
+
+##### donnees XY liaison STEP - pt de rejet #####
+
+df_liaison<-df_final%>%
+  subset(annee==max(df_final$annee, na.rm=TRUE))%>%
+  dplyr::select("code_du_steu",
+                "latitude_du_steu_wgs84",
+                "longitude_du_steu_wgs84",
+                "latitude_du_rejet_wgs84",
+                "longitude_du_rejet_wgs84"
+                )
+
+names(df_liaison)<-c("code_du_steu",
+                     "lon1",
+                     "lat1",
+                     "lon2",
+                     "lat2")
+
+    # creation shp_liaison STEP / pt rejet
+
+    make_line <- function(lon1, lat1, lon2, lat2) {
+      sf::st_linestring(matrix(c(lat1, lat2, lon1, lon2), 2, 2))
+    }
+
+
+    df_liaison <- df_liaison %>%
+      dplyr::select(-`code_du_steu`) %>%
+      purrr::pmap(make_line) %>%
+      sf::st_as_sfc(crs = 4326) %>%
+      sf::st_transform(crs=2154)%>%
+      {
+        tibble::tibble(`code_du_steu` = df_liaison$`code_du_steu`,
+               geometry = .)
+      } %>%
+      sf::st_sf()
+
+
+df_liaison<-sf::st_transform(df_liaison, crs=2154)
+df_liaison<-df_liaison%>%
+  subset(`code_du_steu` %in% df_sf$`code_du_steu` | 
+           `code_du_steu` %in% df_sf_rej$`code_du_steu` )%>%unique()
+
+table_id <- DBI::Id(schema = "r621_step",
+                          table = "r621_liaison_steprejet_vilaine_xy_lis")
+
+try(DBI::dbRemoveTable(con, table_id))
+
+# Créer une table postgis avec un index spatial
+
+# Créer la requête SQL pour créer la table postgis
+sql_create_table <- paste0("CREATE TABLE r621_step.r621_liaison_steprejet_vilaine_xy_lis (",
+                           "id SERIAL PRIMARY KEY,",
+                           "geometry GEOMETRY,",
+                           paste(paste0(colnames(df_liaison)[colnames(df_liaison)!="geometry"], " TEXT"), collapse = ", "),
+                           ")")
+
+
+DBI::dbSendQuery(con, sql_create_table)
+
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_liaison_steprejet_vilaine_xy_lis.code_du_steu IS 'Code SANDRE de la STEP';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+
+
+# Insérer l'objet sf dans la table postgis
+sf::st_write(df_liaison, 
+             con, 
+             table_id, 
+             driver = "PostgreSQL", 
+             append = TRUE)
+
+# Commenter la table postgis
+
+DBI::dbSendQuery(con, paste0("COMMENT ON TABLE r621_step.r621_liaison_steprejet_vilaine_xy_lis IS '{
+  \"Title\": \"Liaison entre les stations d''épuration du bassin de la Vilaine et leurs points de rejet au milieu naturel\",
+  \"Abstract\": \"Données extraites de https://www.assainissement.developpement-durable.gouv.fr/PortailAC/ pour le bassin Loire-Bretagne, sélection sur le bassin de la Vilaine uniquement. Données importées sous geogwilen le ",format(Sys.Date(), "%d/%m/%Y"),"\",
+  \"Keywords\": [\"station d''épuration\",\"STEP\", \"assainissement\", \"points de rejets\", \"liaison points de rejets\"],
+  \"Categories\": [\"Données géographiques\"],
+  \"SpatialExtent\": {
+    \"xmin\": ",sf::st_bbox(df_liaison)$xmin,",
+    \"ymin\": ",sf::st_bbox(df_liaison)$ymin,",
+    \"xmax\": ",sf::st_bbox(df_liaison)$xmax,",
+    \"ymax\": ",sf::st_bbox(df_liaison)$ymax,",
+    \"srs\": \"EPSG:2154\"
+  },
+  \"TemporalExtent\": {
+    \"Begin\": \"",min(df_final$annee),"\",
+    \"End\": \"",max(df_final$annee),"\"
+  },
+  \"Contacts\": [{
+    \"Name\": \"Anthony DE BURGHRAVE\",
+    \"Email\": \"anthony.deburghrave@eaux-et-vilaine.bzh\"
+  }],
+  \"Links\": [{
+    \"Type\": \"website\",
+    \"URL\": \"https://www.assainissement.developpement-durable.gouv.fr/PortailAC/\"
+  }]
+}'"))
+
+
+##### table attributaire caractéristiques de la station r621_ouvrages_ous #####
+
+r621_ouvrages_ous<-df_final%>%
+  dplyr::select(code_du_steu,
+                nom_du_steu,
+                nature_du_steu,
+                etat_du_steu,
+              date_de_mise_en_service_du_steu,
+                date_de_mise_hors_serv_du_steu,
+              capacite_nominale_en_eh,
+              capacite_nominale_en_kg_de_dbo5,
+              debit_de_reference_en_m3_j,
+              filiere_eau_principale,
+              filiere_boues_principale,
+              date_derniere_modification_steu,
+              nom_du_milieu_de_rejet,
+              nom_du_bassin_versant,
+              niveau_traitement_existant_biologique,
+              niveau_traitement_existant_azote,
+              niveau_traitement_existant_phosphore,
+              niveau_traitement_existant_desinfection,
+              type_de_reseau_majoritaire,
+              code_de_masse_eau,
+              nom_de_la_masse_eau,
+              annee
+               )%>%
+  subset(`code_du_steu`%in% df_sf$`code_du_steu`)
+
+r621_ouvrages_ous <- r621_ouvrages_ous %>%
+  subset(is.na(date_de_mise_hors_serv_du_steu))%>%
+  dplyr::group_by(code_du_steu) %>%
+  dplyr::slice(which.max(annee)) %>%
+  dplyr::ungroup()
+
+r621_ouvrages_ous<-dplyr::left_join(df_sf, r621_ouvrages_ous, by="code_du_steu")
+
+
+
+table_id <- DBI::Id(schema = "r621_step",
+                          table = "r621_ouvrages_ous")
+
+
+try(DBI::dbRemoveTable(con, table_id))
+
+# Créer une table postgis avec un index spatial
+
+# Créer la requête SQL pour créer la table postgis
+sql_create_table <- paste0("CREATE TABLE r621_step.r621_ouvrages_ous (",
+                           "id SERIAL PRIMARY KEY,",
+                           "geometry GEOMETRY,",
+                           paste(paste0(colnames(r621_ouvrages_ous)[colnames(r621_ouvrages_ous)!="geometry"], " TEXT"), collapse = ", "),
+                           ")")
+
+
+DBI::dbSendQuery(con, sql_create_table)
+
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.code_du_steu IS 'Code SANDRE de la STEP';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.nom_du_steu IS 'Nom de la STEP';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.nature_du_steu IS 'Type de STEP (urbaine, industrielle ou mixte)';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-paste0("COMMENT ON COLUMN r621_step.r621_ouvrages_ous.etat_du_steu IS 'Indicateur si la STEP était en service au 31/12/",max(df_sf$annee),"';")
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-paste0("COMMENT ON COLUMN r621_step.r621_ouvrages_ous.date_de_mise_en_service_du_steu IS 'Date de mise en service de la station';")
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-paste0("COMMENT ON COLUMN r621_step.r621_ouvrages_ous.date_de_mise_hors_serv_du_steu IS 'Date de mise hors service de la station (NA signifie que la STEP est en service)';")
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.capacite_nominale_en_eh IS 'Capacité nominale de la STEP exprimée en équivalent habitant (1eh = 60g/jour DBO5)';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.capacite_nominale_en_kg_de_dbo5 IS 'Capacité nominale de la STEP exprimée en équivalent habitant';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.debit_de_reference_en_m3_j IS 'Débit de référence = débit que la STEP doit pouvoir traiter sans déverser d''eau brute au milieu naturel (voir https://www.gers.gouv.fr/content/download/15569/122118/file/Debit%20de%20reference_v221_juin2012.pdf)';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.filiere_eau_principale IS 'Filière de traitement des eaux';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.filiere_boues_principale IS 'Filière de traitement des boues';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.nom_du_milieu_de_rejet IS 'Localisation du point de rejet d''eau';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.nom_du_bassin_versant IS 'Bassin versant d''implantation de la STEP';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.niveau_traitement_existant_biologique IS 'Niveau de traitement biologique. Voir https://www.eaufrance.fr/lassainissement-des-eaux-usees-domestiques';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.niveau_traitement_existant_azote IS 'Traitement conçu pour éliminer l''azote (si NA absence de traitement de l''azote)';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.niveau_traitement_existant_phosphore IS 'Traitement conçu pour éliminer le phosphore (si NA absence de traitement du phosphore)';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.niveau_traitement_existant_desinfection IS 'Traitement conçu pour éliminer la charge bactériologique (si NA absence de traitement dédié)';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.type_de_reseau_majoritaire IS 'Type de réseau majoritairement raccordé à la STEP';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.code_de_masse_eau IS 'Code de la masse d''eau réceptrice des rejets de la STEP selon la DDTM';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.nom_de_la_masse_eau IS 'Nom de la masse d''eau réceptrice des rejets de la STEP selon la DDTM';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.annee IS 'Année des données';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+
+
+# Insérer l'objet sf dans la table postgis
+sf::st_write(r621_ouvrages_ous, 
+             con, 
+             table_id, 
+             driver = "PostgreSQL", 
+             append = TRUE)
+
+# Commenter la table postgis
+
+DBI::dbSendQuery(con, paste0("COMMENT ON TABLE r621_step.r621_ouvrages_ous IS '{
+  \"Title\": \"Caractéristiques des stations d''épuration du bassin de la Vilaine\",
+  \"Abstract\": \"Données extraites de https://www.assainissement.developpement-durable.gouv.fr/PortailAC/ pour le bassin Loire-Bretagne, sélection sur le bassin de la Vilaine uniquement. Données importées sous geogwilen le ",format(Sys.Date(), "%d/%m/%Y"),"\",
+  \"Keywords\": [\"station d''épuration\",\"STEP\", \"assainissement\", \"technologie de traitement\", \"boues activées\", \"lagunage\", \"filtre planté\"],
+  \"Categories\": [\"Données géographiques\"],
+  \"SpatialExtent\": {
+    \"xmin\": ",sf::st_bbox(r621_ouvrages_ous)$xmin,",
+    \"ymin\": ",sf::st_bbox(r621_ouvrages_ous)$ymin,",
+    \"xmax\": ",sf::st_bbox(r621_ouvrages_ous)$xmax,",
+    \"ymax\": ",sf::st_bbox(r621_ouvrages_ous)$ymax,",
+    \"srs\": \"EPSG:2154\"
+  },
+  \"TemporalExtent\": {
+    \"Begin\": \"",max(df_final$annee),"\",
+    \"End\": \"",max(df_final$annee),"\"
+  },
+  \"Contacts\": [{
+    \"Name\": \"Anthony DE BURGHRAVE\",
+    \"Email\": \"anthony.deburghrave@eaux-et-vilaine.bzh\"
+  }],
+  \"Links\": [{
+    \"Type\": \"website\",
+    \"URL\": \"https://www.assainissement.developpement-durable.gouv.fr/PortailAC/\"
+  }]
+}'"))
+
+
+##### table attributaire conformité r621_conformite_cos #####
+r621_conformite_cos<-df_final%>%
+  dplyr::select(code_du_steu,
+                nom_du_steu,
+                annee,
+                taille_agglomeration_eh,
+                tranche_obligation,
+                charge_maximale_entrante_eh,
+                capacite_nominale_en_eh,
+                debit_entrant_en_m3_j,
+                debit_de_reference_en_m3_j,
+                percentile95_calcule_en_m3_j,
+                conformite_globale_agglo,
+                cause_de_non_conformite,
+                conformite_equipement_agglo,
+                conformite_en_performance_agglo,
+                conformite_collecte_agglo_temps_sec,
+                conformite_collecte_agglo,
+                conformite_eru_perf_dbo,
+                conformite_eru_perf_dco,
+                conformite_eru_perf_ngl,
+                conformite_eru_perf_pt,
+                prod_boues_sans_reactif_tms_an
+               )%>%
+  subset(`code_du_steu`%in% df_sf$`code_du_steu`)%>%
+  unique()
+
+r621_conformite_cos<-dplyr::left_join(df_sf, r621_conformite_cos, by="code_du_steu")
+ 
+
+table_id <- DBI::Id(schema = "r621_step",
+                          table = "r621_conformite_cos")
+
+#on efface la table préalablement à son remplissage (on ne peux pas écraser sinon on perd les vues dépendantes de la table)
+try(DBI::dbExecute(con, "DELETE FROM r621_step.r621_conformite_cos"))
+
+# Créer une table postgis avec un index spatial
+
+# Créer la requête SQL pour créer la table postgis
+sql_create_table <- paste0("CREATE TABLE r621_step.r621_conformite_cos (",
+                           "id SERIAL PRIMARY KEY,",
+                           "geometry GEOMETRY,",
+                           paste(paste0(colnames(r621_conformite_cos)[colnames(r621_conformite_cos)!="geometry"], " TEXT"), collapse = ", "),
+                           ")")
+
+
+DBI::dbSendQuery(con, sql_create_table)
+
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.code_du_steu IS 'Code SANDRE de la STEP';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.nom_du_steu IS 'Nom de la STEP';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.annee IS 'Année de la donnée';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.taille_agglomeration_eh IS 'Taille de l''agglomération en équivalent habitant';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.tranche_obligation IS 'Catégorie dans laquelle est classée la station d''épuration pour évaluer sa conformité selon l''arrêté ministériel du 21 juillet 2015 modifié';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.charge_maximale_entrante_eh IS 'Charge maximale relevée dans l''année en entrée de STEP exprimée en équivalent habitants';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.capacite_nominale_en_eh IS 'Charge nominale de la STEP exprimée en équivalent-habitants';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.debit_de_reference_en_m3_j IS 'Débit de référence = débit que la STEP doit pouvoir traiter sans déverser d''eau brute au milieu naturel (voir https://www.gers.gouv.fr/content/download/15569/122118/file/Debit%20de%20reference_v221_juin2012.pdf)';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.debit_entrant_en_m3_j IS 'Débit moyen entrant sur la STEP';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.percentile95_calcule_en_m3_j IS 'Percentile 95 des débits entrant sur la STEP - le débit de référence est en théorie calculé pour prendre en compte ce percentile 95';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.conformite_globale_agglo IS 'L''agglomération respecte-t-elle l''ensemble des critères de conformité réglementaire (équipements, performances, réseau de collecte)';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.cause_de_non_conformite IS 'Motif de non conformité';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.conformite_equipement_agglo IS 'Les équipements de la STEP sont conformes à la réglementation';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.conformite_en_performance_agglo IS 'Les performances de traitement de la STEP sont conformes à la réglementation';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.conformite_collecte_agglo_temps_sec IS 'Les performances du réseau de collecte sont conformes à la réglementation en temps sec';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.conformite_collecte_agglo IS 'Les performances du réseau de collecte sont conformes à la réglementation en temps sec et en temps de pluie';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.conformite_eru_perf_dbo IS 'Les performances de la STEP sur le traitement de la DBO5 sont conformes à la réglementation';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.conformite_eru_perf_dco IS 'Les performances de la STEP sur le traitement de la DCO sont conformes à la réglementation';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.conformite_eru_perf_ngl IS 'Les performances de la STEP sur le traitement de l''azote sont conformes à la réglementation';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.conformite_eru_perf_pt IS 'Les performances de la STEP sur le traitement du phosphore sont conformes à la réglementation';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_conformite_cos.prod_boues_sans_reactif_tms_an IS 'Production de boues en tonne de matière sèche par an';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+
+
+# Insérer l'objet sf dans la table postgis
+sf::st_write(r621_conformite_cos, 
+             con, 
+             table_id, 
+             driver = "PostgreSQL", 
+             append = TRUE)
+
+# Commenter la table postgis
+
+DBI::dbSendQuery(con, paste0("COMMENT ON TABLE r621_step.r621_conformite_cos IS '{
+  \"Title\": \"Conformité des stations d''épuration du bassin de la Vilaine\",
+  \"Abstract\": \"Données extraites de https://www.assainissement.developpement-durable.gouv.fr/PortailAC/ pour le bassin Loire-Bretagne, sélection sur le bassin de la Vilaine uniquement. Données importées sous geogwilen le ",format(Sys.Date(), "%d/%m/%Y"),"\",
+  \"Keywords\": [\"station d''épuration\",\"STEP\", \"assainissement\", \"conformité\", \"performances épuratoires\", \"DERU\"],
+  \"Categories\": [\"Données géographiques\"],
+  \"SpatialExtent\": {
+    \"xmin\": ",sf::st_bbox(r621_conformite_cos)$xmin,",
+    \"ymin\": ",sf::st_bbox(r621_conformite_cos)$ymin,",
+    \"xmax\": ",sf::st_bbox(r621_conformite_cos)$xmax,",
+    \"ymax\": ",sf::st_bbox(r621_conformite_cos)$ymax,",
+    \"srs\": \"EPSG:2154\"
+  },
+  \"TemporalExtent\": {
+    \"Begin\": \"",min(df_final$annee),"\",
+    \"End\": \"",min(df_final$annee),"\"
+  },
+  \"Contacts\": [{
+    \"Name\": \"Anthony DE BURGHRAVE\",
+    \"Email\": \"anthony.deburghrave@eaux-et-vilaine.bzh\"
+  }],
+  \"Links\": [{
+    \"Type\": \"website\",
+    \"URL\": \"https://www.assainissement.developpement-durable.gouv.fr/PortailAC/\"
+  }]
+}'"))
+
+
+  
+##### Fermer la connexion #####
+DBI::dbDisconnect(con)
+
+return(ifelse(nrow(df_final)>0, "OK", "KO"))
+  
 }
 ```
 
@@ -95,13 +720,11 @@ After inflating the template
 -->
 
 ```{r examples}
-my_median(1:12)
 
-# Example with your dataset in "inst/"
-datafile <- system.file("nyc_squirrels_sample.csv", package = "gwilenalim")
-nyc_squirrels <- read.csv(datafile, encoding = "UTF-8")
-# Apply my function
-my_median(nyc_squirrels[,"hectare_squirrel_number"])
+  config <- yaml::read_yaml("C://workspace//gwilenalim//yaml//config.yml")
+  dossier <- system.file(package = "gwilenalim")
+  importe_data_step(dossier)
+
 ```
 
 <!--
@@ -118,62 +741,16 @@ After inflating the template
 -->
 
 ```{r tests}
-test_that("my_median works properly and show error if needed", {
-  expect_true(my_median(1:12) == 6.5)
-  expect_error(my_median("text"))
+test_that("importe_data_step works properly and show error if needed", {
+
+  config <- yaml::read_yaml("C://workspace//gwilenalim//yaml//config.yml")
+  
+  dossier <- system.file(package = "gwilenalim")
+
+    expect_true( importe_data_step(dossier) == "OK")
+
 })
 
-# Test with your dataset in "inst/"
-datafile <- system.file("nyc_squirrels_sample.csv", package = "gwilenalim")
-nyc_squirrels <- read.csv(datafile, encoding = "UTF-8")
-# Apply test on my function
-test_that("my_median works properly with internal dataset", {
-  expect_equal(my_median(nyc_squirrels[,"hectare_squirrel_number"]), 3)
-})
-```
-
-# Calculate the mean of a vector
-
-<!--
-There can be other functions, examples and tests in your flat template.
-Each of them will be inflated in a different file, provided that there is a level-1 or level-2 section title to separate from previous functions.
--->
-
-## Use sub-functions in the same chunk
-
-```{r function-my_other_median}
-#' My Other median
-#'
-#' @param x Vector of Numeric values
-#' @inheritParams stats::median
-#'
-#' @return
-#' Median of vector x
-#' @export
-#'
-#' @examples
-my_other_median <- function(x, na.rm = TRUE) {
-  if (!is.numeric(x)) {stop("x should be numeric")}
-  sub_median(x, na.rm =na.rm)
-}
-
-#' Core of the median not exported
-#' @param x Vector of Numeric values
-#' @inheritParams stats::median
-sub_median <- function(x, na.rm = TRUE) {
-  stats::median(x, na.rm)
-}
-```
-
-```{r examples-my_other_median}
-my_other_median(1:12)
-```
-
-```{r tests-my_other_median}
-test_that("my_median works properly and show error if needed", {
-  expect_true(my_other_median(1:12) == 6.5)
-  expect_error(my_other_median("text"))
-})
 ```
 
 <!--
@@ -191,7 +768,8 @@ These are only included in the present flat template file, their content will no
 ```{r development-inflate, eval=FALSE}
 # Keep eval=FALSE to avoid infinite loop in case you hit the knit button
 # Execute in the console directly
-fusen::inflate(flat_file = "dev/flat_full.Rmd", vignette_name = "Get started")
+# fusen::inflate(flat_file = "dev/flat_full.Rmd", vignette_name = "Get started")
+fusen::inflate(flat_file = "dev/flat_full.Rmd", vignette_name = NA)
 ```
 
 
