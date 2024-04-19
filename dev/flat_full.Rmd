@@ -200,7 +200,7 @@ df_sf<-df_sf[sage_vilaine,]%>%
   subset(annee==max(df_final$annee, na.rm=TRUE))%>%
   dplyr::select("code_du_steu")%>%
   unique()
-df_sf$assainissement<-paste0("https://www.assainissement.developpement-durable.gouv.fr/PortailAC/fiche-", 
+df_sf$assainissement<-paste0("https://assainissement.developpement-durable.gouv.fr/pages/data/fiche-", 
                    df_sf$code_du_steu)
 
 
