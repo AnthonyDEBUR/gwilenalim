@@ -3,7 +3,7 @@
 #' importe_data_step
 #'
 #' @param dossier : adresse du dossier où sont stockés les fichiers csv exportés depuis le site 
-#' https://www.assainissement.developpement-durable.gouv.fr/PortailAC/ 
+#' https://www.assainissement.developpement-durable.gouv.fr/ 
 #'
 #' @return
 #' statut de l'enregistrement des données (OK si les lignes ont été importées et KO sinon)
@@ -124,7 +124,7 @@ sf::st_write(df_sf,
 
 DBI::dbSendQuery(con, paste0("COMMENT ON TABLE m621_step.bdd_step_fr IS '{
   \"Title\": \"Stations d''épuration du bassin Loire-Bretagne\",
-  \"Abstract\": \"Données extraites de https://www.assainissement.developpement-durable.gouv.fr/PortailAC/ pour le bassin Loire-Bretagne et importées sous geogwilen le ",format(Sys.Date(), "%d/%m/%Y"),"\",
+  \"Abstract\": \"Données extraites de https://www.assainissement.developpement-durable.gouv.fr/ pour le bassin Loire-Bretagne et importées sous geogwilen le ",format(Sys.Date(), "%d/%m/%Y"),"\",
   \"Keywords\": [\"station d''épuration\",\"STEP\", \"assainissement\"],
   \"Categories\": [\"Données géographiques\"],
   \"SpatialExtent\": {
@@ -144,7 +144,7 @@ DBI::dbSendQuery(con, paste0("COMMENT ON TABLE m621_step.bdd_step_fr IS '{
   }],
   \"Links\": [{
     \"Type\": \"website\",
-    \"URL\": \"https://www.assainissement.developpement-durable.gouv.fr/PortailAC/\"
+    \"URL\": \"https://www.assainissement.developpement-durable.gouv.fr/\"
   }]
 }'"))
 
@@ -199,7 +199,7 @@ sf::st_write(df_sf,
 
 DBI::dbSendQuery(con, paste0("COMMENT ON TABLE r621_step.r621_step_vilaine_xy_ste IS '{
   \"Title\": \"Stations d''épuration du bassin de la Vilaine\",
-  \"Abstract\": \"Données extraites de https://www.assainissement.developpement-durable.gouv.fr/PortailAC/ pour le bassin Loire-Bretagne, sélection sur le bassin de la Vilaine uniquement. Données importées sous geogwilen le ",format(Sys.Date(), "%d/%m/%Y"),"\",
+  \"Abstract\": \"Données extraites de https://www.assainissement.developpement-durable.gouv.fr/ pour le bassin Loire-Bretagne, sélection sur le bassin de la Vilaine uniquement. Données importées sous geogwilen le ",format(Sys.Date(), "%d/%m/%Y"),"\",
   \"Keywords\": [\"station d''épuration\",\"STEP\", \"assainissement\"],
   \"Categories\": [\"Données géographiques\"],
   \"SpatialExtent\": {
@@ -219,7 +219,7 @@ DBI::dbSendQuery(con, paste0("COMMENT ON TABLE r621_step.r621_step_vilaine_xy_st
   }],
   \"Links\": [{
     \"Type\": \"website\",
-    \"URL\": \"https://www.assainissement.developpement-durable.gouv.fr/PortailAC/\"
+    \"URL\": \"https://www.assainissement.developpement-durable.gouv.fr/\"
   }]
 }'"))
 
@@ -270,7 +270,7 @@ sf::st_write(df_sf_rej,
 
 DBI::dbSendQuery(con, paste0("COMMENT ON TABLE r621_step.r621_rejets_vilaine_xy_res IS '{
   \"Title\": \"Points de rejets au milieu naturel des stations d''épuration du bassin de la Vilaine\",
-  \"Abstract\": \"Données extraites de https://www.assainissement.developpement-durable.gouv.fr/PortailAC/ pour le bassin Loire-Bretagne, sélection sur le bassin de la Vilaine uniquement. Données importées sous geogwilen le ",format(Sys.Date(), "%d/%m/%Y"),"\",
+  \"Abstract\": \"Données extraites de https://www.assainissement.developpement-durable.gouv.fr/ pour le bassin Loire-Bretagne, sélection sur le bassin de la Vilaine uniquement. Données importées sous geogwilen le ",format(Sys.Date(), "%d/%m/%Y"),"\",
   \"Keywords\": [\"station d''épuration\",\"STEP\", \"assainissement\", \"points de rejets\"],
   \"Categories\": [\"Données géographiques\"],
   \"SpatialExtent\": {
@@ -290,7 +290,7 @@ DBI::dbSendQuery(con, paste0("COMMENT ON TABLE r621_step.r621_rejets_vilaine_xy_
   }],
   \"Links\": [{
     \"Type\": \"website\",
-    \"URL\": \"https://www.assainissement.developpement-durable.gouv.fr/PortailAC/\"
+    \"URL\": \"https://www.assainissement.developpement-durable.gouv.fr/\"
   }]
 }'"))
 
@@ -368,7 +368,7 @@ sf::st_write(df_liaison,
 
 DBI::dbSendQuery(con, paste0("COMMENT ON TABLE r621_step.r621_liaison_steprejet_vilaine_xy_lis IS '{
   \"Title\": \"Liaison entre les stations d''épuration du bassin de la Vilaine et leurs points de rejet au milieu naturel\",
-  \"Abstract\": \"Données extraites de https://www.assainissement.developpement-durable.gouv.fr/PortailAC/ pour le bassin Loire-Bretagne, sélection sur le bassin de la Vilaine uniquement. Données importées sous geogwilen le ",format(Sys.Date(), "%d/%m/%Y"),"\",
+  \"Abstract\": \"Données extraites de https://www.assainissement.developpement-durable.gouv.fr/ pour le bassin Loire-Bretagne, sélection sur le bassin de la Vilaine uniquement. Données importées sous geogwilen le ",format(Sys.Date(), "%d/%m/%Y"),"\",
   \"Keywords\": [\"station d''épuration\",\"STEP\", \"assainissement\", \"points de rejets\", \"liaison points de rejets\"],
   \"Categories\": [\"Données géographiques\"],
   \"SpatialExtent\": {
@@ -388,7 +388,7 @@ DBI::dbSendQuery(con, paste0("COMMENT ON TABLE r621_step.r621_liaison_steprejet_
   }],
   \"Links\": [{
     \"Type\": \"website\",
-    \"URL\": \"https://www.assainissement.developpement-durable.gouv.fr/PortailAC/\"
+    \"URL\": \"https://www.assainissement.developpement-durable.gouv.fr/\"
   }]
 }'"))
 
@@ -517,7 +517,7 @@ sf::st_write(r621_ouvrages_ous,
 
 DBI::dbSendQuery(con, paste0("COMMENT ON TABLE r621_step.r621_ouvrages_ous IS '{
   \"Title\": \"Caractéristiques des stations d''épuration du bassin de la Vilaine\",
-  \"Abstract\": \"Données extraites de https://www.assainissement.developpement-durable.gouv.fr/PortailAC/ pour le bassin Loire-Bretagne, sélection sur le bassin de la Vilaine uniquement. Données importées sous geogwilen le ",format(Sys.Date(), "%d/%m/%Y"),"\",
+  \"Abstract\": \"Données extraites de https://www.assainissement.developpement-durable.gouv.fr/ pour le bassin Loire-Bretagne, sélection sur le bassin de la Vilaine uniquement. Données importées sous geogwilen le ",format(Sys.Date(), "%d/%m/%Y"),"\",
   \"Keywords\": [\"station d''épuration\",\"STEP\", \"assainissement\", \"technologie de traitement\", \"boues activées\", \"lagunage\", \"filtre planté\"],
   \"Categories\": [\"Données géographiques\"],
   \"SpatialExtent\": {
@@ -537,7 +537,7 @@ DBI::dbSendQuery(con, paste0("COMMENT ON TABLE r621_step.r621_ouvrages_ous IS '{
   }],
   \"Links\": [{
     \"Type\": \"website\",
-    \"URL\": \"https://www.assainissement.developpement-durable.gouv.fr/PortailAC/\"
+    \"URL\": \"https://www.assainissement.developpement-durable.gouv.fr/\"
   }]
 }'"))
 
@@ -645,7 +645,7 @@ sf::st_write(r621_conformite_cos,
 
 DBI::dbSendQuery(con, paste0("COMMENT ON TABLE r621_step.r621_conformite_cos IS '{
   \"Title\": \"Conformité des stations d''épuration du bassin de la Vilaine\",
-  \"Abstract\": \"Données extraites de https://www.assainissement.developpement-durable.gouv.fr/PortailAC/ pour le bassin Loire-Bretagne, sélection sur le bassin de la Vilaine uniquement. Données importées sous geogwilen le ",format(Sys.Date(), "%d/%m/%Y"),"\",
+  \"Abstract\": \"Données extraites de https://www.assainissement.developpement-durable.gouv.fr/ pour le bassin Loire-Bretagne, sélection sur le bassin de la Vilaine uniquement. Données importées sous geogwilen le ",format(Sys.Date(), "%d/%m/%Y"),"\",
   \"Keywords\": [\"station d''épuration\",\"STEP\", \"assainissement\", \"conformité\", \"performances épuratoires\", \"DERU\"],
   \"Categories\": [\"Données géographiques\"],
   \"SpatialExtent\": {
@@ -665,7 +665,7 @@ DBI::dbSendQuery(con, paste0("COMMENT ON TABLE r621_step.r621_conformite_cos IS 
   }],
   \"Links\": [{
     \"Type\": \"website\",
-    \"URL\": \"https://www.assainissement.developpement-durable.gouv.fr/PortailAC/\"
+    \"URL\": \"https://www.assainissement.developpement-durable.gouv.fr/\"
   }]
 }'"))
 

@@ -8,7 +8,7 @@ importe_data_step(dossier)
 }
 \arguments{
 \item{dossier}{: adresse du dossier où sont stockés les fichiers csv exportés depuis le site
-https://www.assainissement.developpement-durable.gouv.fr/PortailAC/}
+https://www.assainissement.developpement-durable.gouv.fr/}
 }
 \value{
 statut de l'enregistrement des données (OK si les lignes ont été importées et KO sinon)
