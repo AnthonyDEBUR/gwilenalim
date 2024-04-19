@@ -433,6 +433,9 @@ DBI::dbSendQuery(con, paste0("COMMENT ON TABLE r621_step.r621_liaison_steprejet_
 
 
 ##### table attributaire caractéristiques de la station r621_ouvrages_ous #####
+df_final$filiere_eau_simplifiee <- ifelse(grepl("(?i)boue activée", df_final$filiere_eau_principale), "Boues activées",
+                              ifelse(grepl("(?i)lagunage", df_final$filiere_eau_principale), "Lagunage",
+                                     df_final$filiere_eau_principale))
 
 r621_ouvrages_ous<-df_final%>%
   dplyr::select(code_du_steu,
@@ -445,6 +448,7 @@ r621_ouvrages_ous<-df_final%>%
               capacite_nominale_en_kg_de_dbo5,
               debit_de_reference_en_m3_j,
               filiere_eau_principale,
+              filiere_eau_simplifiee,
               filiere_boues_principale,
               date_derniere_modification_steu,
               nom_du_milieu_de_rejet,
@@ -482,7 +486,12 @@ try(DBI::dbRemoveTable(con, table_id))
 sql_create_table <- paste0("CREATE TABLE r621_step.r621_ouvrages_ous (",
                            "id SERIAL PRIMARY KEY,",
                            "geometry GEOMETRY,",
-                           paste(paste0(colnames(r621_ouvrages_ous)[colnames(r621_ouvrages_ous)!="geometry"], " TEXT"), collapse = ", "),
+                           "capacite_nominale_en_eh NUMERIC,",
+                           "capacite_nominale_en_kg_de_dbo5 NUMERIC,",
+                           "debit_de_reference_en_m3_j NUMERIC,",
+                           "annee NUMERIC,",
+                           paste(paste0(colnames(r621_ouvrages_ous)[!colnames(r621_ouvrages_ous)%in%c("geometry",
+                                                                                                  "capacite_nominale_en_eh", "capacite_nominale_en_kg_de_dbo5","debit_de_reference_en_m3_j","annee")], " TEXT"), collapse = ", "),
                            ")")
 
 
@@ -508,6 +517,10 @@ sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.debit_de_r
 DBI::dbSendQuery(con, sql_commente_colonnes)
 sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.filiere_eau_principale IS 'Filière de traitement des eaux';"
 DBI::dbSendQuery(con, sql_commente_colonnes)
+
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.filiere_eau_simplifiee IS 'Filière de traitement des eaux avec regroupement par Eaux & Vilaine des différentes filières de type boues activées et des différentes filières de type lagunage';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+
 sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.filiere_boues_principale IS 'Filière de traitement des boues';"
 DBI::dbSendQuery(con, sql_commente_colonnes)
 sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.nom_du_milieu_de_rejet IS 'Localisation du point de rejet d''eau';"
@@ -602,7 +615,7 @@ table_id <- DBI::Id(schema = "r621_step",
                           table = "r621_conformite_cos")
 
 #on efface la table préalablement à son remplissage (on ne peux pas écraser sinon on perd les vues dépendantes de la table)
-try(DBI::dbExecute(con, "DELETE FROM r621_step.r621_conformite_cos"))
+try(DBI::dbRemoveTable(con, table_id))
 
 # Créer une table postgis avec un index spatial
 
@@ -753,6 +766,48 @@ test_that("importe_data_step works properly and show error if needed", {
 
 ```
 
+# importe_stations_qualite
+    
+```{r function-importe_stations_qualite}
+#' importe_stations_qualite
+#' 
+#' Fonction pour importer les coordonnées des stations qualité depuis le SANDRE et compléter le référentiel avec le référentiel AELB pour les réseaux d'appartenance. On se limite aux stations sur l'emprise du bassin de la Vilaine.
+#' Réferentiel AELB disponible ici : https://donnees-documents.eau-loire-bretagne.fr/sites/donnees-documents/home/donnees/referentiel-stations-mesure-qualite.html
+#' Référentiel métropolitain des stations ici : https://www.sandre.eaufrance.fr/atlas/srv/fre/catalog.search#/metadata/71767e88-a021-4e88-8787-5feed04958d6
+#' 
+#' @return
+#' #' statut de l'enregistrement des données (OK si les lignes ont été importées et KO sinon)
+#' @export
+importe_stations_qualite <- function(){
+  # importe la couche de stations qualité de la métropole depuis le SANDRE
+  
+  
+  # découpage de la couche importée selon l'emprise du bassin de la Vilaine
+  
+  
+  
+  # chargement de la couche de référence depuis le site AELB 
+  
+  
+  # croisement avec ajout des informations RCS, RRP, RCO, RCR
+  
+  
+}
+```
+  
+```{r example-importe_stations_qualite}
+importe_stations_qualite()
+```
+  
+```{r tests-importe_stations_qualite}
+test_that("importe_stations_qualite works", {
+    config <- yaml::read_yaml("C://workspace//gwilenalim//yaml//config.yml")
+  
+    expect_true( importe_stations_qualite() == "OK")
+})
+```
+
+
 <!--
 # There can be development actions
 
@@ -771,6 +826,10 @@ These are only included in the present flat template file, their content will no
 # fusen::inflate(flat_file = "dev/flat_full.Rmd", vignette_name = "Get started")
 fusen::inflate(flat_file = "dev/flat_full.Rmd", vignette_name = NA)
 ```
+
+
+
+  
 
 
 # Inflate your package

@@ -394,6 +394,9 @@ DBI::dbSendQuery(con, paste0("COMMENT ON TABLE r621_step.r621_liaison_steprejet_
 
 
 ##### table attributaire caractéristiques de la station r621_ouvrages_ous #####
+df_final$filiere_eau_simplifiee <- ifelse(grepl("(?i)boue activée", df_final$filiere_eau_principale), "Boues activées",
+                              ifelse(grepl("(?i)lagunage", df_final$filiere_eau_principale), "Lagunage",
+                                     df_final$filiere_eau_principale))
 
 r621_ouvrages_ous<-df_final%>%
   dplyr::select(code_du_steu,
@@ -406,6 +409,7 @@ r621_ouvrages_ous<-df_final%>%
               capacite_nominale_en_kg_de_dbo5,
               debit_de_reference_en_m3_j,
               filiere_eau_principale,
+              filiere_eau_simplifiee,
               filiere_boues_principale,
               date_derniere_modification_steu,
               nom_du_milieu_de_rejet,
@@ -469,6 +473,10 @@ sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.debit_de_r
 DBI::dbSendQuery(con, sql_commente_colonnes)
 sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.filiere_eau_principale IS 'Filière de traitement des eaux';"
 DBI::dbSendQuery(con, sql_commente_colonnes)
+
+sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.filiere_eau_simplifiee IS 'Filière de traitement des eaux avec regroupement par Eaux & Vilaine des différentes filières de type boues activées et des différentes filières de type lagunage';"
+DBI::dbSendQuery(con, sql_commente_colonnes)
+
 sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.filiere_boues_principale IS 'Filière de traitement des boues';"
 DBI::dbSendQuery(con, sql_commente_colonnes)
 sql_commente_colonnes<-"COMMENT ON COLUMN r621_step.r621_ouvrages_ous.nom_du_milieu_de_rejet IS 'Localisation du point de rejet d''eau';"
@@ -563,7 +571,7 @@ table_id <- DBI::Id(schema = "r621_step",
                           table = "r621_conformite_cos")
 
 #on efface la table préalablement à son remplissage (on ne peux pas écraser sinon on perd les vues dépendantes de la table)
-try(DBI::dbExecute(con, "DELETE FROM r621_step.r621_conformite_cos"))
+try(DBI::dbRemoveTable(con, table_id))
 
 # Créer une table postgis avec un index spatial
 
