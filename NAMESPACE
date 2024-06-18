@@ -2,5 +2,6 @@
 
 export("%>%")
 export(importe_data_step)
+export(importe_redevances_industrie)
 export(importe_stations_qualite)
 importFrom(magrittr,"%>%")
